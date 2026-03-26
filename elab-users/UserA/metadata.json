@@ -1,11 +1,11 @@
 {
-  "Name": "EchizenLab Web Portal UserA 1",
-  "Source Type": "Project (Synthetiq X)",
-  "Category": "Members",
-  "Category": ["Codes"],
-  "Security Field": ["General"],
-  "Target Model": "-",
+  "title": "EchizenLab Web Portal UserA 1",
+  "source_type": "Project (Synthetiq X)",
+  "category": "Members",
+  "repo_type": ["Codes"],
+  "security_field": ["General"],
+  "target_model": "-",
   "importance": "★★★ (High)",
-  "GitHub URL":,"https://xxx.xxx.xxx",
-  "date":"March-26-2026"
+  "github_url": "https://xxx.xxx.xxx",
+  "date": "March-26-2026"
 }

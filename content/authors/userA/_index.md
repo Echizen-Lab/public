@@ -1,11 +1,13 @@
 ---
-# このフォルダ名(userA)とURLを一致させます
-title: userAの表示名（例：田中 太郎）
+# 表示される名前
+title: userA
 
-# 【重要】data/authors/にあるファイル名を指定して紐付けます
+# ユーザーの種類（通常は 'person'）
+type: authors
+
+# 【最重要】data/authors/にあるYAMLファイル名と一致させる
 authors:
   - userA
-
-# ページとして公開するためのフラグ
-active: true
 ---
+
+ここに自己紹介などを書くことができます。

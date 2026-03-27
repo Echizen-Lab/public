@@ -6,8 +6,8 @@ title: userA
 type: authors
 
 # 【最重要】data/authors/にあるYAMLファイル名と一致させる
-authors:
-  - userA
+
+authors: ["userA"]
 ---
 
 ここに自己紹介などを書くことができます。

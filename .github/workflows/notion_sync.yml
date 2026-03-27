@@ -1,49 +1,30 @@
-name: Sync Metadata to Notion
+name: Hugo to Notion Sync
 
 on:
   push:
     paths:
-      - '**/metadata.json'
+      - 'content/project/**/index.md' # プロジェクトフォルダの記事が対象
 
 jobs:
-  notion_sync:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v42
-        with:
-          files: '**/metadata.json'
-
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-
       - name: Install dependencies
-        run: pip install requests
-
+        run: pip install PyYAML requests
       - name: Run sync script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          ALL_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
           python - <<EOF
-          import os
-          import json
-          import requests
+          import os, yaml, requests
+          from pathlib import Path
 
-          changed_files = os.environ.get('ALL_CHANGED_FILES', '').split()
-          if not changed_files:
-              print("No metadata.json files changed.")
-              exit(0)
-          
           headers = {
               "Authorization": f"Bearer {os.environ['NOTION_TOKEN']}",
               "Content-Type": "application/json",
@@ -51,56 +32,34 @@ jobs:
           }
           db_id = os.environ['NOTION_DATABASE_ID']
 
-          for file_path in changed_files:
-              print(f"--- Processing: {file_path} ---")
-              if not os.path.exists(file_path):
-                  print(f"File {file_path} deleted, skipping.")
-                  continue
+          # 新規・変更されたMarkdownファイルをスキャン
+          for path in Path('content/project').rglob('index.md'):
+              with open(path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+                  if not content.startswith('---'): continue
+                  # フロントマター(YAML)を解析
+                  data = yaml.safe_load(content.split('---')[1])
                   
-              with open(file_path, 'r', encoding='utf-8') as f:
-                  try:
-                      data = json.load(f)
-                  except json.JSONDecodeError:
-                      print(f"Error: {file_path} is not a valid JSON.")
-                      continue
-
-              folder_path = os.path.dirname(file_path)
-              full_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/tree/main/{folder_path}"
-
-              # 1. Notion側をFile Pathで検索
-              query_url = f"https://api.notion.com/v1/databases/{db_id}/query"
-              query_payload = {
-                  "filter": {
-                      "property": "File Path",
-                      "rich_text": { "equals": file_path }
+                  title = data.get('title', 'Untitled')
+                  importance = data.get('importance', '★★★ (High)')
+                  
+                  # Notionに登録するデータ
+                  props = {
+                      "Name": {"title": [{"text": {"content": title}}]},
+                      "Importance": {"select": {"name": importance}},
+                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
                   }
-              }
-              query_res = requests.post(query_url, json=query_payload, headers=headers)
-              results = query_res.json().get("results", [])
 
-              # 2. プロパティ組み立て
-              properties = {
-                  "Name": { "title": [{ "text": { "content": data.get("title", "Untitled") } }] },
-                  "Source Type": { "select": { "name": data.get("source_type") } },
-                  "Category": { "select": { "name": data.get("category") } },
-                  "Importance": { "select": { "name": data.get("importance") } },
-                  "GitHub URL": { "url": full_url },
-                  "File Path": { "rich_text": [{ "text": { "content": file_path } }] }
-              }
-
-              if results:
-                  page_id = results[0]["id"]
-                  update_url = f"https://api.notion.com/v1/pages/{page_id}"
-                  response = requests.patch(update_url, json={"properties": properties}, headers=headers)
-                  action = "Updated"
-              else:
-                  create_url = "https://api.notion.com/v1/pages"
-                  payload = { "parent": { "database_id": db_id }, "properties": properties }
-                  response = requests.post(create_url, json=payload, headers=headers)
-                  action = "Created"
-
-              if response.status_code == 200:
-                  print(f"Successfully {action} {file_path} in Notion!")
-              else:
-                  print(f"Error: {response.status_code}, {response.text}")
+                  # 重複チェック（File Pathで検索）
+                  query = requests.post(f"https://api.notion.com/v1/databases/{db_id}/query", 
+                                      json={"filter": {"property": "File Path", "rich_text": {"equals": str(path)}}}, 
+                                      headers=headers).json()
+                  
+                  if query.get("results"):
+                      page_id = query["results"][0]["id"]
+                      requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers)
+                      print(f"Updated Notion: {title}")
+                  else:
+                      requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
+                      print(f"Created Notion: {title}")
           EOF

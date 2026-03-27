@@ -2,7 +2,7 @@ schema: hugoblox/author/v1
 slug: me
 is_owner: true
 name:
-  display: Prof. Echizen Taro
+  display: Prof. Taro Echizen
   given: Taro
   family: Echizen
   alternate: ''  # Example: 王伟
@@ -13,7 +13,7 @@ postnominals:
   - MIEEE
 status:
   icon: "☕️"
-role: Senior AI Research Scientist
+role: National Information Institute
 bio: |
   Alex Johnson is a Senior AI Research Scientist at Meta AI. His research
   has been published in top conferences like NeurIPS and ICML, with over

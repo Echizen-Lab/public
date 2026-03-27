@@ -27,13 +27,17 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # 最新の安定版Node.jsを使用
+
+      - name: Install TailwindCSS
+        run: npm install -D tailwindcss postcss autoprefixer
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v4
-
-      # --- ここが重要：Tailwind CSS をインストールする ---
-      - name: Install TailwindCSS
-        run: npm install -g tailwindcss
 
       - name: Build with Hugo
         run: |

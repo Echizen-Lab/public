@@ -78,7 +78,7 @@ jobs:
                   # メンバー同期の sync_to_notion 呼び出し部分
                   sync_to_notion(name_str, user_db, str(path), {
                       "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]},
-                      "Hugo Link": {"url": f"https://echizen-lab.github.io/public/author/{path.stem}/"}
+                      "Hugo Link": {"url": f"https://echizen-lab.github.io/public/authors/{path.stem}/"}
                   })
 
           # 2. プロジェクトの同期

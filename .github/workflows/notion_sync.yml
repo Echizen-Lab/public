@@ -82,14 +82,34 @@ jobs:
                       "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]},
                       "Hugo Link": {"url": f"https://echizen-lab.github.io/public/authors/{user_id_lower}/"}
                   })
-
-          # 2. プロジェクトの同期
+                  
+          # 2. プロジェクトの同期（詳細プロパティ対応版）
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/projects').rglob('index.md'):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
                   if not content.startswith('---'): continue
-                  data = yaml.safe_load(content.split('---')[1])
+                  try:
+                      data = yaml.safe_load(content.split('---')[1])
+                  except Exception: continue
+                  
                   if data:
-                      sync_to_notion(data.get('title', 'Untitled'), proj_db, str(path))
+                      # 各項目の取得（Notionの形式に合わせて整理）
+                      title = data.get('title') or path.parent.name
+                      
+                      # 送信データの組み立て
+                      extra_props = {
+                          "Source Type": {"select": {"name": data.get('source_type')}} if data.get('source_type') else None,
+                          "Category": {"multi_select": [{"name": data.get('category')}]} if data.get('category') else None,
+                          "Repo Type": {"select": {"name": data.get('repo_type')}} if data.get('repo_type') else None,
+                          "Importance": {"select": {"name": data.get('importance')}} if data.get('importance') else None,
+                          "GitHub URL": {"url": data.get('github_url')} if data.get('github_url') else None,
+                          "Security Field": {"multi_select": [{"name": data.get('security_field')}]} if data.get('security_field') else None,
+                          "Target Model": {"select": {"name": data.get('target_model')}} if data.get('target_model') else None,
+                          "date": {"date": {"start": str(data.get('date'))}} if data.get('date') else None
+                      }
+                      
+                      # None（空）の項目を削除して送信
+                      clean_props = {k: v for k, v in extra_props.items() if v is not None}
+                      sync_to_notion(title, proj_db, str(path), clean_props)
           EOF

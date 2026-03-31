@@ -3,7 +3,7 @@ name: Hugo to Notion Sync
 on:
   push:
     paths:
-      - 'content/project/**/index.md'
+      - 'content/projects/**/index.md'
       - 'data/authors/*.yaml'
 
 jobs:

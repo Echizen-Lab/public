@@ -1,5 +1,5 @@
 ---
-title: "synthetiq-x 2"
+title: "synthetiq-x 3"
 summary: "explanation for synthetiq-x"
 authors:
   - admin

@@ -60,20 +60,25 @@ jobs:
           user_db = os.environ['USER_DB_ID']
           for path in Path('data/authors').glob('*.yaml'):
               with open(path, 'r', encoding='utf-8') as f:
-                  data = yaml.safe_load(f)
+                  raw_data = yaml.safe_load(f)
+                  
+                  # データがリスト形式（- display: ...）で始まっている場合に対応
+                  data = raw_data[0] if isinstance(raw_data, list) and len(raw_data) > 0 else raw_data
                   
                   if isinstance(data, dict):
-                      # display の中身（名前）を取得。なければファイル名を使う
-                      name_to_show = data.get('display') or data.get('name') or path.stem
+                      # display, name, title の順で探し、なければファイル名
+                      name_val = data.get('display') or data.get('name') or data.get('title') or path.stem
+                      # もし取得したものがまだ辞書なら、その中の最初の値を取る
+                      if isinstance(name_val, dict):
+                          name_val = list(name_val.values())[0]
+                      name_str = str(name_val)
                   else:
-                      # 万が一中身が空や文字列だった場合の予備
-                      name_to_show = str(data) if data else path.stem
+                      name_str = str(data) if data else path.stem
                   
-                  # 確実に「文字列」として送信する
-                  sync_to_notion(str(name_to_show), user_db, str(path), {
+                  sync_to_notion(name_str, user_db, str(path), {
                       "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
                   })
-                      
+            
           # 2. プロジェクトの同期
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/project').rglob('index.md'):

@@ -52,13 +52,17 @@ jobs:
               else:
                   requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
                   print(f"Created: {title}")
-
+                  
           # 1. メンバー (Authors) の同期
           base_url = "https://echizen-lab.github.io/public/author/"
           for path in Path('data/authors').glob('*.yaml'):
               with open(path, 'r', encoding='utf-8') as f:
                   data = yaml.safe_load(f)
-                  if data and 'name' in data:
+                  if data:
+                      # yamlの中身に応じて、名前として使う項目を選択
+                      # 'display' があればそれを、なければ 'name' を使う
+                      actual_name = data.get('display') or data.get('name') or path.stem
+
                       user_id = path.stem # ファイル名 (userAなど)
                       sync_to_notion(data['name'], os.environ['USER_DB_ID'], str(path), {
                           "GitHub ID": {"rich_text": [{"text": {"content": user_id}}]},

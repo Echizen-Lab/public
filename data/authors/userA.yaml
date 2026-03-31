@@ -2,7 +2,7 @@ schema: hugoblox/author/v1
 slug: me
 is_owner: true
 name:
-  display: Mr/Miss. Ichiro Tanaka
+  display: Child Ichiro Tanaka
   given: Ichiro-san
   family: Tanaka
   alternate: ''  # Example: 王伟

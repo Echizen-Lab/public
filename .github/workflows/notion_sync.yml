@@ -1,9 +1,10 @@
-name: Hugo to Notion Sync
+name: Hugo to Notion Sync (Project & Members)
 
 on:
   push:
     paths:
-      - 'content/project/**/index.md' # プロジェクトフォルダの記事が対象
+      - 'content/project/**/index.md'
+      - 'data/authors/*.yaml' # メンバー情報が追加された時も実行
 
 jobs:
   sync:
@@ -19,7 +20,8 @@ jobs:
       - name: Run sync script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          PROJECT_DB_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          USER_DB_ID: ${{ secrets.USER_DATABASE_ID }} # 新しいメンバーDBのID
         run: |
           python - <<EOF
           import os, yaml, requests
@@ -30,36 +32,48 @@ jobs:
               "Content-Type": "application/json",
               "Notion-Version": "2022-06-28"
           }
-          db_id = os.environ['NOTION_DATABASE_ID']
 
-          # 新規・変更されたMarkdownファイルをスキャン
+          def sync_to_notion(title, db_id, file_path, extra_props={}):
+              props = {
+                  "Name": {"title": [{"text": {"content": title}}]},
+                  "File Path": {"rich_text": [{"text": {"content": file_path}}]}
+              }
+              props.update(extra_props)
+              
+              # 重複チェック
+              query = requests.post(f"https://api.notion.com/v1/databases/{db_id}/query", 
+                                  json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}}, 
+                                  headers=headers).json()
+              
+              if query.get("results"):
+                  page_id = query["results"][0]["id"]
+                  requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers)
+                  print(f"Updated: {title}")
+              else:
+                  requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
+                  print(f"Created: {title}")
+
+          # 1. メンバー (Authors) の同期
+          base_url = "https://echizen-lab.github.io/public/author/"
+          for path in Path('data/authors').glob('*.yaml'):
+              with open(path, 'r', encoding='utf-8') as f:
+                  data = yaml.safe_load(f)
+                  if data and 'name' in data:
+                      user_id = path.stem # ファイル名 (userAなど)
+                      sync_to_notion(data['name'], os.environ['USER_DB_ID'], str(path), {
+                          "GitHub ID": {"rich_text": [{"text": {"content": user_id}}]},
+                          "Hugo Link": {"url": f"{base_url}{user_id}/"}
+                      })
+
+          # 2. プロジェクトの同期
           for path in Path('content/project').rglob('index.md'):
               with open(path, 'r', encoding='utf-8') as f:
-                  content = f.read()
-                  if not content.startswith('---'): continue
-                  # フロントマター(YAML)を解析
-                  data = yaml.safe_load(content.split('---')[1])
-                  
-                  title = data.get('title', 'Untitled')
-                  importance = data.get('importance', '★★★ (High)')
-                  
-                  # Notionに登録するデータ
-                  props = {
-                      "Name": {"title": [{"text": {"content": title}}]},
-                      "Importance": {"select": {"name": importance}},
-                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
-                  }
-
-                  # 重複チェック（File Pathで検索）
-                  query = requests.post(f"https://api.notion.com/v1/databases/{db_id}/query", 
-                                      json={"filter": {"property": "File Path", "rich_text": {"equals": str(path)}}}, 
-                                      headers=headers).json()
-                  
-                  if query.get("results"):
-                      page_id = query["results"][0]["id"]
-                      requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers)
-                      print(f"Updated Notion: {title}")
-                  else:
-                      requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
-                      print(f"Created Notion: {title}")
+                  raw_content = f.read()
+                  if not raw_content.startswith('---'): continue
+                  data = yaml.safe_load(raw_content.split('---')[1])
+                  if data and 'title' in data:
+                      importance = data.get('importance', '★★★ (High)')
+                      sync_to_notion(data['title'], os.environ['PROJECT_DB_ID'], str(path), {
+                          "Importance": {"select": {"name": importance}}
+                      })
           EOF

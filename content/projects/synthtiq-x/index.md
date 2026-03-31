@@ -1,6 +1,6 @@
 ---
-title: "プロジェクト名"
-summary: "プロジェクトの短い説明"
+title: "synthetiq-x"
+summary: "explanation for synthetiq-x"
 authors:
   - admin
   - userA  # 前回のuserAをここに書くと紐付きます

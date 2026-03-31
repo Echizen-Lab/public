@@ -85,7 +85,7 @@ jobs:
 
           # 2. プロジェクトの同期
           proj_db = os.environ['PROJECT_DB_ID']
-          for path in Path('content/project').rglob('index.md'):
+          for path in Path('content/projects').rglob('index.md'):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
                   if not content.startswith('---'): continue

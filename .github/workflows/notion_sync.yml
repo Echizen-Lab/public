@@ -75,10 +75,12 @@ jobs:
                   else:
                       name_str = str(data) if data else path.stem
                   
+                  # メンバー同期の sync_to_notion 呼び出し部分
                   sync_to_notion(name_str, user_db, str(path), {
-                      "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
+                      "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]},
+                      "Hugo Link": {"url": f"https://echizen-lab.github.io/public/author/{path.stem}/"}
                   })
-            
+
           # 2. プロジェクトの同期
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/project').rglob('index.md'):

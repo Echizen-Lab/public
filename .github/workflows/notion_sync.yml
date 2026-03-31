@@ -1,30 +1,4 @@
-name: Hugo to Notion Sync (Project & Members)
-
-on:
-  push:
-    paths:
-      - 'content/project/**/index.md'
-      - 'data/authors/*.yaml' # メンバー情報が追加された時も実行
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - name: Install dependencies
-        run: pip install PyYAML requests
-      - name: Run sync script
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          PROJECT_DB_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          USER_DB_ID: ${{ secrets.USER_DATABASE_ID }} # 新しいメンバーDBのID
-        run: |
-          python - <<EOF
-          import os, yaml, requests
+import os, yaml, requests
           from pathlib import Path
 
           headers = {
@@ -40,44 +14,39 @@ jobs:
               }
               props.update(extra_props)
               
-              # 重複チェック
               query = requests.post(f"https://api.notion.com/v1/databases/{db_id}/query", 
                                   json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}}, 
                                   headers=headers).json()
               
               if query.get("results"):
                   page_id = query["results"][0]["id"]
-                  requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers)
-                  print(f"Updated: {title}")
+                  res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers)
+                  print(f"Updated: {title} -> https://notion.so/{page_id.replace('-', '')}")
               else:
-                  requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
-                  print(f"Created: {title}")
-                  
+                  res = requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
+                  if res.status_code == 200:
+                      page_id = res.json()["id"]
+                      print(f"Created: {title} -> https://notion.so/{page_id.replace('-', '')}")
+                  else:
+                      print(f"Error: {res.text}")
+
           # 1. メンバー (Authors) の同期
-          base_url = "https://echizen-lab.github.io/public/author/"
+          user_db = os.environ['USER_DB_ID']
           for path in Path('data/authors').glob('*.yaml'):
               with open(path, 'r', encoding='utf-8') as f:
                   data = yaml.safe_load(f)
                   if data:
-                      # yamlの中身に応じて、名前として使う項目を選択
-                      # 'display' があればそれを、なければ 'name' を使う
-                      actual_name = data.get('display') or data.get('name') or path.stem
-
-                      user_id = path.stem # ファイル名 (userAなど)
-                      sync_to_notion(data['name'], os.environ['USER_DB_ID'], str(path), {
-                          "GitHub ID": {"rich_text": [{"text": {"content": user_id}}]},
-                          "Hugo Link": {"url": f"{base_url}{user_id}/"}
+                      name = data.get('display') or data.get('name') or path.stem
+                      sync_to_notion(name, user_db, str(path), {
+                          "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
                       })
 
           # 2. プロジェクトの同期
+          proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/project').rglob('index.md'):
               with open(path, 'r', encoding='utf-8') as f:
-                  raw_content = f.read()
-                  if not raw_content.startswith('---'): continue
-                  data = yaml.safe_load(raw_content.split('---')[1])
-                  if data and 'title' in data:
-                      importance = data.get('importance', '★★★ (High)')
-                      sync_to_notion(data['title'], os.environ['PROJECT_DB_ID'], str(path), {
-                          "Importance": {"select": {"name": importance}}
-                      })
-          EOF
+                  content = f.read()
+                  if not content.startswith('---'): continue
+                  data = yaml.safe_load(content.split('---')[1])
+                  if data:
+                      sync_to_notion(data.get('title', 'Untitled'), proj_db, str(path))

@@ -61,13 +61,18 @@ jobs:
           for path in Path('data/authors').glob('*.yaml'):
               with open(path, 'r', encoding='utf-8') as f:
                   data = yaml.safe_load(f)
+                  
                   if isinstance(data, dict):
-                      # ★ ここが重要！ 'display' という項目の中身だけを取り出す
-                      name_str = str(data.get('display') or data.get('name') or path.stem)
-                      
-                      sync_to_notion(name_str, user_db, str(path), {
-                          "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
-                      })
+                      # display の中身（名前）を取得。なければファイル名を使う
+                      name_to_show = data.get('display') or data.get('name') or path.stem
+                  else:
+                      # 万が一中身が空や文字列だった場合の予備
+                      name_to_show = str(data) if data else path.stem
+                  
+                  # 確実に「文字列」として送信する
+                  sync_to_notion(str(name_to_show), user_db, str(path), {
+                      "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
+                  })
                       
           # 2. プロジェクトの同期
           proj_db = os.environ['PROJECT_DB_ID']

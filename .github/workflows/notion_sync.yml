@@ -68,8 +68,7 @@ jobs:
                       sync_to_notion(name_str, user_db, str(path), {
                           "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
                       })
-
-
+                      
           # 2. プロジェクトの同期
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/project').rglob('index.md'):

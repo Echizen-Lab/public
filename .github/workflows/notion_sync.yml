@@ -61,9 +61,11 @@ jobs:
           for path in Path('data/authors').glob('*.yaml'):
               with open(path, 'r', encoding='utf-8') as f:
                   data = yaml.safe_load(f)
-                  if data:
-                      name = data.get('display') or data.get('name') or path.stem
-                      sync_to_notion(name, user_db, str(path), {
+                  if isinstance(data, dict):
+                      # 名前として使う文字列を特定する（displayがあれば優先、なければname、それもなければファイル名）
+                      name_str = str(data.get('display') or data.get('name') or path.stem)
+                      
+                      sync_to_notion(name_str, user_db, str(path), {
                           "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]}
                       })
 

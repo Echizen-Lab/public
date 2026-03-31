@@ -1,4 +1,30 @@
-import os, yaml, requests
+name: Hugo to Notion Sync
+
+on:
+  push:
+    paths:
+      - 'content/project/**/index.md'
+      - 'data/authors/*.yaml'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: pip install PyYAML requests
+      - name: Run sync script
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PROJECT_DB_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          USER_DB_ID: ${{ secrets.USER_DATABASE_ID }}
+        run: |
+          python - <<EOF
+          import os, yaml, requests
           from pathlib import Path
 
           headers = {
@@ -28,7 +54,7 @@ import os, yaml, requests
                       page_id = res.json()["id"]
                       print(f"Created: {title} -> https://notion.so/{page_id.replace('-', '')}")
                   else:
-                      print(f"Error: {res.text}")
+                      print(f"Error for {title}: {res.text}")
 
           # 1. メンバー (Authors) の同期
           user_db = os.environ['USER_DB_ID']
@@ -50,3 +76,4 @@ import os, yaml, requests
                   data = yaml.safe_load(content.split('---')[1])
                   if data:
                       sync_to_notion(data.get('title', 'Untitled'), proj_db, str(path))
+          EOF

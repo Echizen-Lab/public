@@ -101,11 +101,11 @@ jobs:
                       # Notionの画面にある「列名」と、index.mdの「項目名」を合体
                       extra_props = {
                           "Source Type": {"select": {"name": data.get('source_type')}} if data.get('source_type') else None,
-                          "Category": {"multi_select": [{"name": data.get('category')}]} if data.get('category') else None,
+                          "Category": {"select": [{"name": data.get('category')}]} if data.get('category') else None,
                           "Repo Type": {"multi_select": [{"name": data.get('repo_type')}]} if data.get('repo_type') else None,
                           "Importance": {"select": {"name": data.get('importance')}} if data.get('importance') else None,
                           "GitHub URL": {"url": data.get('github_url')} if data.get('github_url') else None,
-                          "Security Field": {"multi_select": [{"name": data.get('security_field')}]} if data.get('security_field') else None,
+                          "Security Field": {"select": [{"name": data.get('security_field')}]} if data.get('security_field') else None,
                           "Target Model": {"select": {"name": data.get('target_model')}} if data.get('target_model') else None,
                           "Target Model 1": {"select": {"name": data.get('target_model_1')}} if data.get('target_model_1') else None,
                           "date": {"date": {"start": str(data.get('date'))}} if data.get('date') else None,

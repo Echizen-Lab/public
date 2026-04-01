@@ -83,7 +83,7 @@ jobs:
                       "Hugo Link": {"url": f"https://echizen-lab.github.io/public/authors/{user_id_lower}/"}
                   })
 
-          # 2. プロジェクトの同期（エラー修正・最終版）
+          # 2. プロジェクトの同期（Notion設定に完全準拠版）
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/projects').rglob('*.md'):
               with open(path, 'r', encoding='utf-8') as f:
@@ -97,21 +97,22 @@ jobs:
                   if data:
                       title = data.get('title') or path.parent.name
                       
-                      # 各項目を Notion の「Select（単一選択）」形式に統一
+                      # Notion側の「単一選択」か「複数選択」かに厳密に合わせています
                       extra_props = {
                           "Source Type": {"select": {"name": str(data.get('source_type'))}} if data.get('source_type') else None,
                           "Category": {"select": {"name": str(data.get('category'))}} if data.get('category') else None,
-                          "Repo Type": {"select": {"name": str(data.get('repo_type'))}} if data.get('repo_type') else None,
                           "Importance": {"select": {"name": str(data.get('importance'))}} if data.get('importance') else None,
-                          "GitHub URL": {"url": data.get('github_url')} if data.get('github_url') else None,
-                          "Security Field": {"select": {"name": str(data.get('security_field'))}} if data.get('security_field') else None,
                           "Target Model": {"select": {"name": str(data.get('target_model'))}} if data.get('target_model') else None,
                           "Target Model 1": {"select": {"name": str(data.get('target_model_1'))}} if data.get('target_model_1') else None,
+                          "GitHub URL": {"url": data.get('github_url')} if data.get('github_url') else None,
                           "date": {"date": {"start": str(data.get('date'))}} if data.get('date') else None,
-                          "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
+                          "File Path": {"rich_text": [{"text": {"content": str(path)}}]},
+                          
+                          # ここをマルチセレクト（リスト形式）に修正
+                          "Repo Type": {"multi_select": [{"name": str(data.get('repo_type'))}]} if data.get('repo_type') else None,
+                          "Security Field": {"multi_select": [{"name": str(data.get('security_field'))}]} if data.get('security_field') else None
                       }
                       
-                      # None の項目を除外して送信
                       clean_props = {k: v for k, v in extra_props.items() if v is not None}
                       sync_to_notion(title, proj_db, str(path), clean_props)
                       

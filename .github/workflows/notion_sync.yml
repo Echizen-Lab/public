@@ -82,35 +82,35 @@ jobs:
                       "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]},
                       "Hugo Link": {"url": f"https://echizen-lab.github.io/public/authors/{user_id_lower}/"}
                   })
-          
-          # 2. プロジェクトの同期（Notion項目完全マッチ版）
+                  
+          # 2. プロジェクトの同期（Notion完全一致版）
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/projects').rglob('index.md'):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
                   if not content.startswith('---'): continue
                   try:
-                      # --- の間の YAML を読み取る
-                      data = yaml.safe_load(content.split('---')[1])
+                      # 最初の --- と 二番目の --- の間だけを解析
+                      parts = content.split('---')
+                      data = yaml.safe_load(parts[1])
                   except Exception: continue
                   
                   if data:
                       title = data.get('title') or path.parent.name
                       
-                      # Notionのプロパティ形式に変換
+                      # Notionの画面にある「列名」と、index.mdの「項目名」を合体
                       extra_props = {
                           "Source Type": {"select": {"name": data.get('source_type')}} if data.get('source_type') else None,
                           "Category": {"multi_select": [{"name": data.get('category')}]} if data.get('category') else None,
-                          "Repo Type": {"select": {"name": data.get('repo_type')}} if data.get('repo_type') else None,
+                          "Repo Type": {"multi_select": [{"name": data.get('repo_type')}]} if data.get('repo_type') else None,
                           "Importance": {"select": {"name": data.get('importance')}} if data.get('importance') else None,
                           "GitHub URL": {"url": data.get('github_url')} if data.get('github_url') else None,
                           "Security Field": {"multi_select": [{"name": data.get('security_field')}]} if data.get('security_field') else None,
                           "Target Model": {"select": {"name": data.get('target_model')}} if data.get('target_model') else None,
                           "Target Model 1": {"select": {"name": data.get('target_model_1')}} if data.get('target_model_1') else None,
-                          "date": {"date": {"start": str(data.get('date'))}} if data.get('date') else None
+                          "date": {"date": {"start": str(data.get('date'))}} if data.get('date') else None,
+                          "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
                       }
                       
-                      # 値が入っている項目だけを抽出して送信
+                      # 空の項目を除外して送信
                       clean_props = {k: v for k, v in extra_props.items() if v is not None}
-                      sync_to_notion(title, proj_db, str(path), clean_props)
-          EOF

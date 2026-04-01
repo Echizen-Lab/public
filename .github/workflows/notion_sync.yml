@@ -114,3 +114,4 @@ jobs:
                       
                       # 空の項目を除外して送信
                       clean_props = {k: v for k, v in extra_props.items() if v is not None}
+                      sync_to_notion(title, proj_db, str(path), clean_props)

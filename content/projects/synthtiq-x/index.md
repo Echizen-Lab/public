@@ -1,5 +1,5 @@
 ---
-title: "Synthetiq X Attack Framework"
+title: "Synthetiq X Attack Framework 2"
 date: 2023-10-27
 source_type: "Project"
 category: "Members"

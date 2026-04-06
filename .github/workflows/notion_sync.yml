@@ -23,97 +23,72 @@ jobs:
           PROJECT_DB_ID: ${{ secrets.NOTION_DATABASE_ID }}
           USER_DB_ID: ${{ secrets.USER_DATABASE_ID }}
         run: |
+          pip install openai pyyaml requests
           python - <<EOF
-          import os, yaml, requests
+          import os
+          import yaml
+          import requests
           from pathlib import Path
+          from openai import OpenAI
 
+          client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
           headers = {
-              "Authorization": f"Bearer {os.environ['NOTION_TOKEN']}",
+              "Authorization": f"Bearer {os.environ['NOTION_API_KEY']}",
               "Content-Type": "application/json",
               "Notion-Version": "2022-06-28"
           }
 
-          def sync_to_notion(title, db_id, file_path, extra_props={}):
-              props = {
-                  "Name": {"title": [{"text": {"content": title}}]},
-                  "File Path": {"rich_text": [{"text": {"content": file_path}}]}
-              }
-              props.update(extra_props)
-              
-              query = requests.post(f"https://api.notion.com/v1/databases/{db_id}/query", 
-                                  json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}}, 
-                                  headers=headers).json()
-              
-              if query.get("results"):
-                  page_id = query["results"][0]["id"]
-                  res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers)
-                  print(f"Updated: {title} -> https://notion.so/{page_id.replace('-', '')}")
-              else:
-                  res = requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": db_id}, "properties": props}, headers=headers)
-                  if res.status_code == 200:
-                      page_id = res.json()["id"]
-                      print(f"Created: {title} -> https://notion.so/{page_id.replace('-', '')}")
-                  else:
-                      print(f"Error for {title}: {res.text}")
-                      
-          # 1. メンバー (Authors) の同期
-          user_db = os.environ['USER_DB_ID']
-          for path in Path('data/authors').glob('*.yaml'):
-              with open(path, 'r', encoding='utf-8') as f:
-                  raw_data = yaml.safe_load(f)
-                  
-                  # データがリスト形式（- display: ...）で始まっている場合に対応
-                  data = raw_data[0] if isinstance(raw_data, list) and len(raw_data) > 0 else raw_data
-                  
-                  if isinstance(data, dict):
-                      # display, name, title の順で探し、なければファイル名
-                      name_val = data.get('display') or data.get('name') or data.get('title') or path.stem
-                      # もし取得したものがまだ辞書なら、その中の最初の値を取る
-                      if isinstance(name_val, dict):
-                          name_val = list(name_val.values())[0]
-                      name_str = str(name_val)
-                  else:
-                      name_str = str(data) if data else path.stem
-                  
-                  # メンバー同期の sync_to_notion 呼び出し部分
-                  user_id_lower = path.stem.lower()
-                  
-                  sync_to_notion(name_str, user_db, str(path), {
-                      "GitHub ID": {"rich_text": [{"text": {"content": path.stem}}]},
-                      "Hugo Link": {"url": f"https://echizen-lab.github.io/public/authors/{user_id_lower}/"}
-                  })
+          def ask_ai_for_tags(content, title):
+              """AIに内容を分析させ、Notionのタグを決定する"""
+              prompt = f"Project Title: {title}\nContent: {content[:1000]}\n\nAnalyze the project and return a JSON with: 'category' (choose from: Attack Framework, Research, Tool), 'importance' (High, Medium, Low), and 'security_field' (choose the most relevant AI security keyword)."
+              try:
+                  response = client.chat.completions.create(
+                      model="gpt-4o-mini",
+                      messages=[{"role": "system", "content": "You are a research assistant. Return JSON only."},
+                                {"role": "user", "content": prompt}],
+                      response_format={ "type": "json_object" }
+                  )
+                  import json
+                  return json.loads(response.choices[0].message.content)
+              except Exception as e:
+                  print(f"AI Error: {e}")
+                  return {}
 
-          # 2. プロジェクトの同期（Notion設定に完全準拠版）
+          def sync_to_notion(title, db_id, file_path, extra_props):
+              query_url = f"https://api.notion.com/v1/databases/{db_id}/query"
+              res = requests.post(query_url, headers=headers, json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}})
+              data = res.json()
+              
+              props = {"Name": {"title": [{"text": {"content": title}}]}}
+              props.update(extra_props)
+
+              if data.get("results"):
+                  page_id = data["results"][0]["id"]
+                  requests.patch(f"https://api.notion.com/v1/pages/{page_id}", headers=headers, json={"properties": props})
+                  print(f"Updated: {title} (AI-tagged)")
+              else:
+                  requests.post("https://api.notion.com/v1/pages", headers=headers, json={"parent": {"database_id": db_id}, "properties": props})
+                  print(f"Created: {title} (AI-tagged)")
+
+          # プロジェクト同期実行
           proj_db = os.environ['PROJECT_DB_ID']
           for path in Path('content/projects').rglob('*.md'):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
                   if not content.startswith('---'): continue
-                  try:
-                      parts = content.split('---')
-                      data = yaml.safe_load(parts[1])
-                  except Exception: continue
+                  parts = content.split('---')
+                  data = yaml.safe_load(parts[1]) if len(parts) > 1 else {}
+                  body = parts[2] if len(parts) > 2 else ""
                   
-                  if data:
-                      title = data.get('title') or path.parent.name
-                      
-                      # Notion側の「単一選択」か「複数選択」かに厳密に合わせています
-                      extra_props = {
-                          "Source Type": {"select": {"name": str(data.get('source_type'))}} if data.get('source_type') else None,
-                          "Category": {"select": {"name": str(data.get('category'))}} if data.get('category') else None,
-                          "Importance": {"select": {"name": str(data.get('importance'))}} if data.get('importance') else None,
-                          "Target Model": {"select": {"name": str(data.get('target_model'))}} if data.get('target_model') else None,
-                          "Target Model 1": {"select": {"name": str(data.get('target_model_1'))}} if data.get('target_model_1') else None,
-                          "GitHub URL": {"url": data.get('github_url')} if data.get('github_url') else None,
-                          "date": {"date": {"start": str(data.get('date'))}} if data.get('date') else None,
-                          "File Path": {"rich_text": [{"text": {"content": str(path)}}]},
-                          
-                          # ここをマルチセレクト（リスト形式）に修正
-                          "Repo Type": {"multi_select": [{"name": str(data.get('repo_type'))}]} if data.get('repo_type') else None,
-                          "Security Field": {"multi_select": [{"name": str(data.get('security_field'))}]} if data.get('security_field') else None
-                      }
-                      
-                      clean_props = {k: v for k, v in extra_props.items() if v is not None}
-                      sync_to_notion(title, proj_db, str(path), clean_props)
-                      
+                  title = data.get('title') or path.parent.name
+                  # AIに相談
+                  ai_decision = ask_ai_for_tags(body, title)
+
+                  extra_props = {
+                      "Category": {"select": {"name": ai_decision.get('category', 'Research')}},
+                      "Importance": {"select": {"name": ai_decision.get('importance', 'Medium')}},
+                      "Security Field": {"multi_select": [{"name": ai_decision.get('security_field', 'General')}]},
+                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
+                  }
+                  sync_to_notion(title, proj_db, str(path), extra_props)
           EOF

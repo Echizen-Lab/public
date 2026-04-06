@@ -1,4 +1,30 @@
-pip install openai pyyaml requests
+name: Notion Sync
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  notion-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies and Sync
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROJECT_DB_ID: ${{ secrets.PROJECT_DB_ID }}
+        run: |
+          pip install openai pyyaml requests
           python - <<EOF
           import os
           import yaml
@@ -6,25 +32,37 @@ pip install openai pyyaml requests
           from pathlib import Path
           from openai import OpenAI
           
+          # 1. 初期設定
           client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
-          
-          # 修正ポイント: 認証ヘッダーを環境変数から正しく読み込む
           headers = {
                 "Authorization": f"Bearer {os.environ['NOTION_API_KEY']}",
                 "Content-Type": "application/json",
                 "Notion-Version": "2022-06-28"
           }
           
+          # 2. AIへの命令（プロンプト）
           def ask_ai_for_tags(content, title):
+              # 固定したいカテゴリと重要度のリスト
               allowed_categories = ["Attack Framework", "Research", "Tool", "Education"]
               allowed_importance = ["High", "Medium", "Low"]
               
-              prompt = f"Project Title: {title}\nContent: {content[:1500]}\n\nTask: 1. Category from {allowed_categories}, 2. Importance from {allowed_importance}, 3. 1-3 Security Field keywords, 4. 2-3 sentences Summary in Japanese. Return JSON only."
+              prompt = f"""
+              Project Title: {title}
+              Content: {content[:1500]}
+              
+              Task:
+              1. Category: Choose ONE from {allowed_categories}.
+              2. Importance: Choose ONE from {allowed_importance}.
+              3. Security Field: Provide 1-2 specific technical keywords (e.g., Prompt Injection).
+              4. Summary: Write a concise 2-3 sentence summary in Japanese (日本語).
+
+              Return ONLY a JSON object with keys: "category", "importance", "security_field", "summary".
+              """
               
               try:
                   response = client.chat.completions.create(
                       model="gpt-4o-mini",
-                      messages=[{"role": "system", "content": "Return JSON with keys: category, importance, security_field, summary."},
+                      messages=[{"role": "system", "content": "You are a professional security analyst. Return JSON only."},
                                 {"role": "user", "content": prompt}],
                       response_format={ "type": "json_object" }
                   )
@@ -34,48 +72,26 @@ pip install openai pyyaml requests
                   print(f"AI Error: {e}")
                   return {}
           
+          # 3. Notionへの同期関数
           def sync_to_notion(title, db_id, file_path, extra_props):
               query_url = f"https://api.notion.com/v1/databases/{db_id}/query"
-              res = requests.post(query_url, headers=headers, json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}})
+              # すでに同じファイルパスのページがあるか検索
+              res = requests.post(query_url, headers=headers, json={
+                  "filter": {"property": "File Path", "rich_text": {"equals": file_path}}
+              })
               data = res.json()
               
               props = {"Name": {"title": [{"text": {"content": title}}]}}
               props.update(extra_props)
           
               if data.get("results"):
+                  # 既存ページの更新
                   page_id = data["results"][0]["id"]
-                  # 更新(PATCH)を実行
                   patch_res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", headers=headers, json={"properties": props})
-                  if patch_res.status_code != 200:
-                      print(f"Update Failed: {patch_res.text}")
+                  if patch_res.status_code == 200:
+                      print(f"✅ Updated: {title}")
                   else:
-                      print(f"Updated: {title} with Summary")
+                      print(f"❌ Update Failed for {title}: {patch_res.text}")
               else:
-                  # 新規作成(POST)を実行
-                  post_res = requests.post("https://api.notion.com/v1/pages", headers=headers, json={"parent": {"database_id": db_id}, "properties": props})
-                  if post_res.status_code != 200:
-                      print(f"Create Failed: {post_res.text}")
-                  else:
-                      print(f"Created: {title} with Summary")
-          
-          proj_db = os.environ['PROJECT_DB_ID']
-          for path in Path('content/projects').rglob('*.md'):
-              with open(path, 'r', encoding='utf-8') as f:
-                  content = f.read()
-                  if not content.startswith('---'): continue
-                  parts = content.split('---')
-                  data = yaml.safe_load(parts[1]) if len(parts) > 1 else {}
-                  body = parts[2] if len(parts) > 2 else ""
-                  
-                  title = data.get('title') or path.parent.name
-                  ai_decision = ask_ai_for_tags(body, title)
-          
-                  extra_props = {
-                      "Category": {"select": {"name": ai_decision.get('category', 'Research')}},
-                      "Importance": {"select": {"name": ai_decision.get('importance', 'Medium')}},
-                      "Security Field": {"multi_select": [{"name": tag} for tag in ai_decision.get('security_field', ['General'])]},
-                      "Summary": {"rich_text": [{"text": {"content": ai_decision.get('summary', 'No summary generated.')}}]},
-                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
-                  }
-                  sync_to_notion(title, proj_db, str(path), extra_props)
-          EOF
+                  # 新規ページの作成
+                  post_res = requests.post("https://api.notion

@@ -34,18 +34,39 @@ jobs:
 
           client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
           headers = {
-              "Authorization": f"Bearer {os.environ['NOTION_API_KEY']}",
-              "Content-Type": "application/json",
-              "Notion-Version": "2022-06-28"
-          }
+                "Authorization": f"Bearer {os.environ['NOTION_API_KEY']}", # ここが *** になっているとエラーになります
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28"
+            }
 
+          # --- 1. AIへの命令（プロンプト）の強化 ---
           def ask_ai_for_tags(content, title):
-              """AIに内容を分析させ、Notionのタグを決定する"""
-              prompt = f"Project Title: {title}\nContent: {content[:1000]}\n\nAnalyze the project and return a JSON with: 'category' (choose from: Attack Framework, Research, Tool), 'importance' (High, Medium, Low), and 'security_field' (choose the most relevant AI security keyword)."
+              # ここに使用したい固定タグのリストを定義します
+              allowed_categories = ["Attack Framework", "Research", "Tool", "Education"]
+              allowed_importance = ["High", "Medium", "Low"]
+              
+              prompt = f"""
+              Project Title: {title}
+              Content: {content[:1500]}
+
+              Task:
+              1. Category: Choose ONE from {allowed_categories}.
+              2. Importance: Choose ONE from {allowed_importance}.
+              3. Security Field: Provide 1-3 specific keywords (e.g., Prompt Injection, Jailbreaking).
+              4. Summary: Write a concise 2-3 sentence summary in Japanese.
+
+              Return ONLY a JSON object:
+              {{
+                "category": "Selected Category",
+                "importance": "Selected Importance",
+                "security_field": ["Keyword1", "Keyword2"],
+                "summary": "日本語の要約文"
+              }}
+              """
               try:
                   response = client.chat.completions.create(
                       model="gpt-4o-mini",
-                      messages=[{"role": "system", "content": "You are a research assistant. Return JSON only."},
+                      messages=[{"role": "system", "content": "You are a professional security analyst. Return JSON only."},
                                 {"role": "user", "content": prompt}],
                       response_format={ "type": "json_object" }
                   )
@@ -88,7 +109,8 @@ jobs:
                   extra_props = {
                       "Category": {"select": {"name": ai_decision.get('category', 'Research')}},
                       "Importance": {"select": {"name": ai_decision.get('importance', 'Medium')}},
-                      "Security Field": {"multi_select": [{"name": ai_decision.get('security_field', 'General')}]},
+                      "Security Field": {"multi_select": [{"name": tag} for tag in ai_decision.get('security_field', ['General'])]},
+                      "Summary": {"rich_text": [{"text": {"content": ai_decision.get('summary', '')}}]}, # 要約を追加
                       "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
                   }
                   sync_to_notion(title, proj_db, str(path), extra_props)

@@ -92,8 +92,18 @@ jobs:
                   ai = json.loads(ai_res.choices[0].message.content)
 
                   p = {
-                      "Summary": {"rich_text": [{"text": {"content": ai.get('summary', '')}}]},
-                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
+                      "Category": {"select": {"name": ai.get('category', 'Research')}},
+                      "Importance": {"select": {"name": ai.get('importance', 'Medium')}},
+                      "Security Field": {"multi_select": [{"name": str(t)} for t in ai.get('security_field', ['General'])]},
+                      "Source Type": {"select": {"name": "GitHub"}}, # 自動でGitHubと入力
+                      "Repo Type": {"multi_select": [{"name": "Public"}]}, # 必要に応じて変更
+                      "Summary": {"rich_text": [{"text": {"content": str(ai.get('summary', 'No summary.'))}}]},
+                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]},
+                      "GitHub URL": {"url": f"https://github.com/${{ github.repository }}/blob/main/{path}"},
+                      "Target Model": {"select": {"name": "General"}},
+                      # date プロパティが必要な場合は以下を有効に（日付形式が厳格なため注意）
+                      # "date": {"date": {"start": "2024-01-01"}} 
                   }
                   sync(title, db_id, str(path), p)
+
           EOF

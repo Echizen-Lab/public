@@ -23,9 +23,9 @@ jobs:
 
       - name: Sync to Notion
         env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PROJECT_DB_ID: ${{ secrets.PROJECT_DB_ID }}
+          PROJECT_DB_ID: ${{ secrets.NOTION_DATABASE_ID }}
         run: |
           python - <<EOF
           import os, yaml, requests, json

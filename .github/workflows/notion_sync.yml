@@ -18,22 +18,20 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies and Sync
+      - name: Install dependencies
+        run: pip install openai pyyaml requests
+
+      - name: Sync to Notion
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PROJECT_DB_ID: ${{ secrets.PROJECT_DB_ID }}
         run: |
-          pip install openai pyyaml requests
           python - <<EOF
-          import os
-          import yaml
-          import requests
-          import json
+          import os, yaml, requests, json
           from pathlib import Path
           from openai import OpenAI
           
-          # 1. 初期設定
           client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
           headers = {
               "Authorization": f"Bearer {os.environ['NOTION_API_KEY']}",
@@ -41,73 +39,53 @@ jobs:
               "Notion-Version": "2022-06-28"
           }
           
-          # 2. AIへの命令
-          def ask_ai_for_tags(content, title):
-              allowed_categories = ["Attack Framework", "Research", "Tool", "Education"]
-              allowed_importance = ["High", "Medium", "Low"]
-              
-              # 文字列内でのエラーを避けるため、シンプルな構造にします
-              prompt = f"Title: {title}\nContent: {content[:1500]}\n\nTask: Choose one category from {allowed_categories}, one importance from {allowed_importance}. Provide 1-2 keywords for security_field. Write 2-3 sentences summary in Japanese. Return JSON only."
-              
+          def ask_ai(content, title):
+              cat_list = ["Attack Framework", "Research", "Tool", "Education"]
+              imp_list = ["High", "Medium", "Low"]
+              # エラー回避のため、プロンプトを1行に集約
+              prompt = f"Title: {title}. Content: {content[:1000]}. Task: Select category from {cat_list}, importance from {imp_list}. Provide 1-2 keywords for security_field. Write 2-3 sentences summary in Japanese. Return JSON only."
               try:
-                  response = client.chat.completions.create(
+                  res = client.chat.completions.create(
                       model="gpt-4o-mini",
                       messages=[
-                          {"role": "system", "content": "You are a security analyst. Return JSON with keys: category, importance, security_field, summary."},
+                          {"role": "system", "content": "Return JSON: {category, importance, security_field, summary}"},
                           {"role": "user", "content": prompt}
                       ],
                       response_format={ "type": "json_object" }
                   )
-                  return json.loads(response.choices[0].message.content)
+                  return json.loads(res.choices[0].message.content)
               except Exception as e:
                   print(f"AI Error: {e}")
                   return {}
           
-          # 3. Notion同期関数
-          def sync_to_notion(title, db_id, file_path, extra_props):
-              query_url = f"https://api.notion.com/v1/databases/{db_id}/query"
-              res = requests.post(query_url, headers=headers, json={
-                  "filter": {"property": "File Path", "rich_text": {"equals": file_path}}
-              })
-              data = res.json()
-              
-              props = {"Name": {"title": [{"text": {"content": title}}]}}
-              props.update(extra_props)
-          
-              if data.get("results"):
-                  page_id = data["results"][0]["id"]
-                  requests.patch(f"https://api.notion.com/v1/pages/{page_id}", headers=headers, json={"properties": props})
-                  print(f"✅ Updated: {title}")
+          def sync(title, db_id, file_path, props):
+              url = f"https://api.notion.com/v1/databases/{db_id}/query"
+              query = requests.post(url, headers=headers, json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}}).json()
+              payload = {"properties": {"Name": {"title": [{"text": {"content": title}}]}, **props}}
+              if query.get("results"):
+                  requests.patch(f"https://api.notion.com/v1/pages/{query['results'][0]['id']}", headers=headers, json=payload)
+                  print(f"Updated: {title}")
               else:
-                  requests.post("https://api.notion.com/v1/pages", headers=headers, json={
-                      "parent": {"database_id": db_id},
-                      "properties": props
-                  })
-                  print(f"✅ Created: {title}")
+                  requests.post("https://api.notion.com/v1/pages", headers=headers, json={"parent": {"database_id": db_id}, **payload})
+                  print(f"Created: {title}")
           
-          # 4. 実行処理
-          proj_db = os.environ['PROJECT_DB_ID']
-          project_path = Path('content/projects')
-          
-          if project_path.exists():
-              for path in project_path.rglob('*.md'):
-                  if path.name.startswith('_'): continue
-                  with open(path, 'r', encoding='utf-8') as f:
-                      raw = f.read()
-                      if not raw.startswith('---'): continue
-                      parts = raw.split('---')
-                      front_matter = yaml.safe_load(parts[1]) if len(parts) > 1 else {}
-                      body = parts[2] if len(parts) > 2 else ""
-                      
-                      title = front_matter.get('title') or path.stem
-                      ai_decision = ask_ai_for_tags(body, title)
-          
-                      extra_props = {
-                          "Category": {"select": {"name": ai_decision.get('category', 'Research')}},
-                          "Importance": {"select": {"name": ai_decision.get('importance', 'Medium')}},
-                          "Security Field": {"multi_select": [{"name": str(tag)} for tag in ai_decision.get('security_field', ['General'])]},
-                          "Summary": {"rich_text": [{"text": {"content": str(ai_decision.get('summary', 'No summary.'))}}]},
-                          "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
-                      }
-                      sync_to_notion(title, proj_db, str(path), extra_props)
+          db_id = os.environ['PROJECT_DB_ID']
+          for path in Path('content/projects').rglob('*.md'):
+              if path.name.startswith('_'): continue
+              with open(path, 'r', encoding='utf-8') as f:
+                  raw = f.read()
+                  if not raw.startswith('---'): continue
+                  parts = raw.split('---')
+                  fm = yaml.safe_load(parts[1]) if len(parts) > 1 else {}
+                  body = parts[2] if len(parts) > 2 else ""
+                  title = fm.get('title') or path.stem
+                  ai = ask_ai(body, title)
+                  p = {
+                      "Category": {"select": {"name": ai.get('category', 'Research')}},
+                      "Importance": {"select": {"name": ai.get('importance', 'Medium')}},
+                      "Security Field": {"multi_select": [{"name": str(t)} for t in ai.get('security_field', ['General'])]},
+                      "Summary": {"rich_text": [{"text": {"content": str(ai.get('summary', 'No summary.'))}}]},
+                      "File Path": {"rich_text": [{"text": {"content": str(path)}}]}
+                  }
+                  sync(title, db_id, str(path), p)
           EOF

@@ -19,9 +19,10 @@ jobs:
         run: pip install PyYAML requests
       - name: Run sync script
         env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          PROJECT_DB_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          USER_DB_ID: ${{ secrets.USER_DATABASE_ID }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # これを追加！
+          USER_DB_ID: ${{ secrets.USER_DB_ID }}
+          PROJECT_DB_ID: ${{ secrets.PROJECT_DB_ID }}
         run: |
           pip install openai pyyaml requests
           python - <<EOF

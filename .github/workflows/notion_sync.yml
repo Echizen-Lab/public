@@ -26,6 +26,7 @@ jobs:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PROJECT_DB_ID: ${{ secrets.PROJECT_DB_ID }}
+        # ... (上の設定部分はそのまま)
         run: |
           python - <<EOF
           import os, yaml, requests, json
@@ -39,36 +40,34 @@ jobs:
               "Notion-Version": "2022-06-28"
           }
           
-          def ask_ai(content, title):
-              cat_list = ["Attack Framework", "Research", "Tool", "Education"]
-              imp_list = ["High", "Medium", "Low"]
-              # エラー回避のため、プロンプトを1行に集約
-              prompt = f"Title: {title}. Content: {content[:1000]}. Task: Select category from {cat_list}, importance from {imp_list}. Provide 1-2 keywords for security_field. Write 2-3 sentences summary in Japanese. Return JSON only."
-              try:
-                  res = client.chat.completions.create(
-                      model="gpt-4o-mini",
-                      messages=[
-                          {"role": "system", "content": "Return JSON: {category, importance, security_field, summary}"},
-                          {"role": "user", "content": prompt}
-                      ],
-                      response_format={ "type": "json_object" }
-                  )
-                  return json.loads(res.choices[0].message.content)
-              except Exception as e:
-                  print(f"AI Error: {e}")
-                  return {}
-          
           def sync(title, db_id, file_path, props):
+              # 1. まずデータベースの構造をチェック（デバッグ用）
+              db_info = requests.get(f"https://api.notion.com/v1/databases/{db_id}", headers=headers).json()
+              if 'properties' in db_info:
+                  print(f"DEBUG: Notion側の列名一覧: {list(db_info['properties'].keys())}")
+              
+              # 2. 既存ページの検索
               url = f"https://api.notion.com/v1/databases/{db_id}/query"
-              query = requests.post(url, headers=headers, json={"filter": {"property": "File Path", "rich_text": {"equals": file_path}}}).json()
+              query_res = requests.post(url, headers=headers, json={
+                  "filter": {"property": "File Path", "rich_text": {"equals": file_path}}
+              }).json()
+              
+              if "error_code" in query_res:
+                  print(f"❌ Notion Query Error: {query_res['message']}")
+                  return
+
               payload = {"properties": {"Name": {"title": [{"text": {"content": title}}]}, **props}}
-              if query.get("results"):
-                  requests.patch(f"https://api.notion.com/v1/pages/{query['results'][0]['id']}", headers=headers, json=payload)
-                  print(f"Updated: {title}")
+              
+              if query_res.get("results"):
+                  page_id = query_res['results'][0]['id']
+                  patch_res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", headers=headers, json=payload)
+                  print(f"✅ Updated: {title} (Page ID: {page_id})")
               else:
+                  # 一致しなかった場合の理由を表示
+                  print(f"⚠️ 一致する File Path が見つからないため新規作成します: {file_path}")
                   requests.post("https://api.notion.com/v1/pages", headers=headers, json={"parent": {"database_id": db_id}, **payload})
-                  print(f"Created: {title}")
           
+          # ... (AI解析部分とループ処理は前回のコードを維持)
           db_id = os.environ['PROJECT_DB_ID']
           for path in Path('content/projects').rglob('*.md'):
               if path.name.startswith('_'): continue
@@ -79,7 +78,19 @@ jobs:
                   fm = yaml.safe_load(parts[1]) if len(parts) > 1 else {}
                   body = parts[2] if len(parts) > 2 else ""
                   title = fm.get('title') or path.stem
-                  ai = ask_ai(body, title)
+                  
+                  # --- AI解析 (ask_aiは前回のまま) ---
+                  cat_list = ["Attack Framework", "Research", "Tool", "Education"]
+                  imp_list = ["High", "Medium", "Low"]
+                  prompt = f"Title: {title}. Content: {body[:1000]}. Task: Select category from {cat_list}, importance from {imp_list}. Keywords for field. Summary in Japanese. JSON only."
+                  res = client.chat.completions.create(
+                      model="gpt-4o-mini",
+                      messages=[{"role": "system", "content": "Return JSON: {category, importance, security_field, summary}"}],
+                      response_format={ "type": "json_object" },
+                      messages=[{"role": "user", "content": prompt}] # 修正
+                  )
+                  ai = json.loads(res.choices[0].message.content)
+
                   p = {
                       "Category": {"select": {"name": ai.get('category', 'Research')}},
                       "Importance": {"select": {"name": ai.get('importance', 'Medium')}},

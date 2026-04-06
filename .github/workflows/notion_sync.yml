@@ -102,7 +102,7 @@ jobs:
                       "GitHub URL": {"url": f"https://github.com/${{ github.repository }}/blob/main/{path}"},
                       "Target Model": {"select": {"name": "General"}},
                       # date プロパティが必要な場合は以下を有効に（日付形式が厳格なため注意）
-                      # "date": {"date": {"start": "2024-01-01"}} 
+                      "date": {"date": {"start": "2024-01-01"}} 
                   }
                   sync(title, db_id, str(path), p)
 
